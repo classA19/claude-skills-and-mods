@@ -1,0 +1,6 @@
+{
+  "name": "next-action",
+  "description": "A one-line banner above the prompt showing your single next step. Set it with /next, finish it with /next done.",
+  "author": { "name": "Alec" },
+  "types": "./types/index.d.ts"
+}

@@ -1,0 +1,17 @@
+{
+  "name": "alec-plugins",
+  "description": "Alec's custom Claude Code skills and mods",
+  "owner": { "name": "Alec", "url": "https://github.com/classA19" },
+  "plugins": [
+    {
+      "name": "next-action",
+      "source": "./mods/next-action",
+      "description": "A one-line banner above the prompt showing your single next step. /next sets it, /next done clears it."
+    },
+    {
+      "name": "alec-skills",
+      "source": "./skills",
+      "description": "Alec's skills: VoltX receipt back-processing, ND audit, RTFM, ADHD output mode, plant and creature ID."
+    }
+  ]
+}
