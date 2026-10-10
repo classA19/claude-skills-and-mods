@@ -21,6 +21,7 @@ async function setNext($: EngineInterface, text: string): Promise<NextAction | n
   const action: NextAction = { text, setAt: await $.clock.now() }
   await update($, current, () => action)
   await $.store.set(STORE_KEY, action)
+  await refreshStatus($)
 
   return before
 }
@@ -34,12 +35,25 @@ async function finish($: EngineInterface): Promise<NextAction | null> {
   await update($, current, () => null)
   await $.store.delete(STORE_KEY)
   await update($, doneCount, n => n + 1)
+  await refreshStatus($)
 
   return was
 }
 
 function doneLine(count: number): string {
   return count === 1 ? '1 done this session' : `${count} done this session`
+}
+
+// The status line under the prompt: shown on every surface, including the
+// app's view of a cloud session, where the banner above the prompt is not.
+function statusLine(action: NextAction | null, done: number): string {
+  const wins = done > 0 ? ` (${doneLine(done)})` : ''
+
+  return action ? `NEXT: ${action.text}${wins}` : `No next action. Type /next <step>.${wins}`
+}
+
+async function refreshStatus($: EngineInterface): Promise<void> {
+  $.ui.status(statusLine(await read($, current), await read($, doneCount)))
 }
 
 function isNextAction(value: unknown): value is NextAction {
@@ -67,6 +81,7 @@ export const register: Register = on => {
         await update($, current, () => saved)
       }
     }
+    await refreshStatus($)
 
     return next(e)
   })

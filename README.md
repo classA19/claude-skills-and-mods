@@ -31,7 +31,7 @@ claude-skills-and-mods/
 
 | Installable plugin | What you get |
 |---|---|
-| `next-action` | `/next <step>` sets your one next step and shows it above the prompt. `/next done` clears it and counts the win. `/next` alone shows it. |
+| `next-action` | `/next <step>` sets your one next step and shows it above the prompt (terminal) and in the status line under the prompt (everywhere, including the desktop app's cloud sessions). `/next done` clears it and counts the win. `/next` alone shows it. |
 | `alec-skills` | All six skills, named `alec-skills:<skill>`. |
 
 ## Install

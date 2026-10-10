@@ -25,8 +25,9 @@ function typed(args = ''): CommandRunInput {
 }
 
 // What sits beneath the plugin in a real session: a store, a clock, the
-// command list and the toast bar. Returns the toasts the plugin raised.
-function world(on: On, stored: Record<string, unknown> = {}): string[] {
+// command list, the toast bar and the status line. Returns what the plugin
+// raised on the last two.
+function world(on: On, stored: Record<string, unknown> = {}) {
   mock.store(on, stored)
   mock.clock(on, { now: 1_000 })
   on('command.register', ($, e) => ({ value: { command: e.name } }))
@@ -36,19 +37,26 @@ function world(on: On, stored: Record<string, unknown> = {}): string[] {
 
     return { value: undefined }
   })
+  const statuses: (string | undefined)[] = []
+  on('ui.status', ($, e) => {
+    statuses.push(e.text)
 
-  return toasts
+    return { value: undefined }
+  })
+
+  return { toasts, statuses }
 }
 
 describe('/next', () => {
   test('sets, replaces, shows and clears the next action', async ($, on) => {
-    world(on)
+    const { statuses } = world(on)
 
     const empty = await $.command.run(typed())
     expect(empty.text).toContain('No next action set')
 
     const set = await $.command.run(typed('Call Elliott about the panel'))
     expect(set.text).toBe('Next action set: Call Elliott about the panel')
+    expect(statuses.at(-1)).toBe('NEXT: Call Elliott about the panel')
     expect(set.context?.[0]).toContain('Call Elliott about the panel')
 
     const replaced = await $.command.run(typed('Order breakers'))
@@ -59,16 +67,18 @@ describe('/next', () => {
 
     const done = await $.command.run(typed('DONE'))
     expect(done.text).toBe('Done: Order breakers (1 done this session)')
+    expect(statuses.at(-1)).toBe('No next action. Type /next <step>. (1 done this session)')
 
     const again = await $.command.run(typed('done'))
     expect(again.text).toContain('Nothing to clear')
   })
 
   test('brings back a saved next action when a session starts', async ($, on) => {
-    world(on, { current: { text: 'Pull permit for Smith job', setAt: 5 } })
+    const { statuses } = world(on, { current: { text: 'Pull permit for Smith job', setAt: 5 } })
     on('session.start', ($, e) => ({ cwd: e.cwd }))
 
     await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+    expect(statuses.at(-1)).toBe('NEXT: Pull permit for Smith job')
 
     const shown = await $.command.run(typed())
     expect(shown.text).toBe('Next action: Pull permit for Smith job')
@@ -78,7 +88,7 @@ describe('/next', () => {
 for (const surface of ['terminal', 'desktop'] as const) {
   describe(`banner on ${surface}`, () => {
     test('shows a nudge when empty, the step when set, and Done clears it', async ($, on) => {
-      const toasts = world(on)
+      const { toasts } = world(on)
       const band = await $.ui.mount({ ...BAND, surface })
 
       expect((await band.find({ text: /No next action/ }))?.text).toContain('/next')
