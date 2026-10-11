@@ -14,7 +14,8 @@ claude-skills-and-mods/
 ├── .claude-plugin/
 │   └── marketplace.json        The catalog: lists every installable plugin below
 ├── mods/
-│   └── next-action/            Mod: "NEXT: ..." banner above the prompt, /next command
+│   ├── next-action/            Mod: "NEXT: ..." banner above the prompt, /next command
+│   └── explain/                Mod: /explain <term> → plain-English explainer in the sidebar
 │       ├── .claude-plugin/plugin.json
 │       ├── hooks/              The mod's code (register.tsx) and its loader (hooks.json)
 │       ├── types/              What the mod remembers ($.state), as TypeScript types
@@ -32,6 +33,7 @@ claude-skills-and-mods/
 | Installable plugin | What you get |
 |---|---|
 | `next-action` | `/next <step>` sets your one next step and shows it above the prompt (terminal) and in the status line under the prompt (everywhere, including the desktop app's cloud sessions). `/next done` clears it and counts the win. `/next` alone shows it. |
+| `explain` | `/explain <term>` explains any word, phrase or command in plain English, in a sidebar, using where it came up in the session. Highlight text and type `/explain` to explain the highlight. Past explainers stay listed under **Earlier**, and are kept between sessions as a personal glossary. |
 | `alec-skills` | All six skills, named `alec-skills:<skill>`. |
 
 ## Install
@@ -41,6 +43,7 @@ On any computer with Claude Code, in a terminal (not inside a session):
 ```
 claude plugin marketplace add classA19/claude-skills-and-mods
 claude plugin install next-action@alec-plugins
+claude plugin install explain@alec-plugins
 claude plugin install alec-skills@alec-plugins
 ```
 

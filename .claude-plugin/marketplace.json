@@ -1,12 +1,20 @@
 {
   "name": "alec-plugins",
   "description": "Alec's custom Claude Code skills and mods",
-  "owner": { "name": "Alec", "url": "https://github.com/classA19" },
+  "owner": {
+    "name": "Alec",
+    "url": "https://github.com/classA19"
+  },
   "plugins": [
     {
       "name": "next-action",
       "source": "./mods/next-action",
       "description": "A one-line banner above the prompt showing your single next step. /next sets it, /next done clears it."
+    },
+    {
+      "name": "explain",
+      "source": "./mods/explain",
+      "description": "/explain any term, phrase or command from the session (or highlighted text) and get a plain-English explainer in the sidebar."
     },
     {
       "name": "alec-skills",
