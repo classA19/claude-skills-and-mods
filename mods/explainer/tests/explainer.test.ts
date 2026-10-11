@@ -9,9 +9,9 @@ const USAGE = {
 }
 
 const PANE = {
-  plugin: 'explain',
+  plugin: 'explainer',
   component: 'Pane',
-  requestId: 'explain',
+  requestId: 'explainer',
   props: {
     title: 'Explain',
     isFocused: false,
@@ -22,10 +22,10 @@ const PANE = {
   },
 } as const
 
-// /explain typed at the prompt, the way the engine passes it.
+// /huh typed at the prompt, the way the engine passes it.
 function typed(args = ''): CommandRunInput {
   return {
-    command: 'explain',
+    command: 'huh',
     args,
     origin: { kind: 'composer' },
     presentation: { isFullscreen: true, columns: 160 },
@@ -40,12 +40,13 @@ type World = {
 }
 
 // What sits beneath the plugin in a real session: store, clock, command list,
-// the sidebar, the highlighted text and the model. Returns what the model was
-// asked, so a test can check which path ran.
+// the sidebar, the highlighted text, toasts and the model. Returns the clock,
+// what the model was asked and the toasts raised.
 function world(on: On, opts: World = {}) {
   mock.store(on, opts.stored ?? {})
   const clock = mock.clock(on, { now: 1_000 })
   on('command.register', ($, e) => ({ value: { command: e.name } }))
+  on('session.start', ($, e) => ({ cwd: e.cwd }))
   on('ui.open', () =>
     opts.isPlaced === false
       ? { value: { isPlaced: false as const, reason: 'no surface places panes' } }
@@ -54,6 +55,12 @@ function world(on: On, opts: World = {}) {
   on('ui.selection', () => ({
     value: opts.selected === undefined ? undefined : { text: opts.selected },
   }))
+  const toasts: string[] = []
+  on('ui.toast', ($, e) => {
+    toasts.push(e.text)
+
+    return { value: undefined }
+  })
   const asked: { via: 'fork' | 'complete'; prompt: string; model?: string }[] = []
   on('model.fork', ($, e) => {
     asked.push({ via: 'fork', prompt: e.prompt })
@@ -68,10 +75,42 @@ function world(on: On, opts: World = {}) {
     return { value: { isAnswered: true as const, text: '**Plain** answer', usage: USAGE } }
   })
 
-  return { clock, asked }
+  return { clock, asked, toasts }
 }
 
-describe('/explain', () => {
+describe('sidebar button', () => {
+  test('explains the highlighted text with one click', async ($, on) => {
+    const { clock, asked } = world(on, { selected: ' git push -u origin main ' })
+    const pane = await $.ui.mount({ ...PANE, surface: 'desktop' })
+
+    await pane.press({ key: 'explain-selection' })
+    expect(await pane.find({ text: 'git push -u origin main' })).toBeDefined()
+    expect(await pane.find({ text: 'Explaining...' })).toBeDefined()
+
+    await clock.settle()
+    expect(asked[0]?.prompt).toContain('"git push -u origin main" as it is used in this session')
+    expect(await pane.find({ type: 'Markdown', text: '**Forked** answer' })).toBeDefined()
+  })
+
+  test('asks for a highlight when nothing is highlighted', async ($, on) => {
+    const { asked, toasts } = world(on)
+    const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
+
+    await pane.press({ key: 'explain-selection' })
+    expect(toasts).toEqual(['Highlight a word or phrase in the chat first.'])
+    expect(asked).toHaveLength(0)
+  })
+
+  test('opens with the session, showing the how-to', async ($, on) => {
+    world(on)
+    await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+
+    const pane = await $.ui.mount({ ...PANE, surface: 'desktop' })
+    expect(await pane.find({ text: /Highlight a word, phrase or command/ })).toBeDefined()
+  })
+})
+
+describe('/huh', () => {
   test('answers in the sidebar, in the background, using the session', async ($, on) => {
     const { clock, asked } = world(on)
 
@@ -88,7 +127,6 @@ describe('/explain', () => {
     await clock.settle()
     expect(asked).toHaveLength(1)
     expect(asked[0]?.via).toBe('fork')
-    expect(asked[0]?.prompt).toContain('"symbolic link" as it is used in this session')
 
     // The same drawings, redrawn when the answer landed.
     for (const pane of [terminal, desktop]) {
@@ -97,11 +135,12 @@ describe('/explain', () => {
     }
   })
 
-  test('prints the explainer inline where no sidebar is placed', async ($, on) => {
-    world(on, { isPlaced: false })
+  test('explains the highlighted text when nothing is typed', async ($, on) => {
+    const { asked } = world(on, { isPlaced: false, selected: 'origin' })
 
-    const ran = await $.command.run(typed('origin'))
+    const ran = await $.command.run(typed())
     expect(ran.text).toBe('**Forked** answer')
+    expect(asked[0]?.prompt).toContain('"origin"')
   })
 
   test('falls back to a plain model call before the conversation has a reply', async ($, on) => {
@@ -114,13 +153,6 @@ describe('/explain', () => {
     expect(asked[1]?.prompt).toContain('in general')
   })
 
-  test('explains the highlighted text when nothing is typed', async ($, on) => {
-    const { asked } = world(on, { isPlaced: false, selected: '  git push -u origin main ' })
-
-    await $.command.run(typed())
-    expect(asked[0]?.prompt).toContain('"git push -u origin main"')
-  })
-
   test('opens the sidebar with a hint when nothing is typed or highlighted', async ($, on) => {
     const { asked } = world(on)
 
@@ -128,11 +160,12 @@ describe('/explain', () => {
     expect(ran.text).toContain('Explain sidebar opened')
     expect(asked).toHaveLength(0)
   })
+})
 
-  test('keeps a glossary: earlier explainers come back and reopen', async ($, on) => {
+describe('glossary', () => {
+  test('earlier explainers come back next session and reopen', async ($, on) => {
     const saved = [{ id: 'old-1', term: 'remote', status: 'done', text: 'A copy elsewhere.' }]
     world(on, { stored: { glossary: saved } })
-    on('session.start', ($, e) => ({ cwd: e.cwd }))
 
     await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
     await $.command.run(typed('push'))

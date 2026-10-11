@@ -4,18 +4,22 @@ import type { EngineInterface, Register } from 'claude-code'
 import type { Explainer } from '../types'
 
 // $.state: what the sidebar draws from. Survives a hot reload of this file.
-const entries = atom({ plugin: 'explain', key: 'entries' } as const, [])
-const shownId = atom({ plugin: 'explain', key: 'shownId' } as const, null)
+const entries = atom({ plugin: 'explainer', key: 'entries' } as const, [])
+const shownId = atom({ plugin: 'explainer', key: 'shownId' } as const, null)
 
 // $.store: the glossary on disk, so past explainers survive a new session.
 const STORE_KEY = 'glossary'
 const KEEP = 50
 
-const PANE = 'explain'
+const PANE = 'explainer'
+const TITLE = 'Explain'
+const COMMAND = 'huh'
 const ACCENT = '#fa9005'
 
 // Used when there is no conversation yet to read the term in.
 const FALLBACK_MODEL = 'sonnet'
+
+const HOW_TO = 'Highlight a word, phrase or command, then click Explain highlighted text (or type /huh).'
 
 function ask(term: string, withSession: boolean): string {
   const where = withSession
@@ -45,7 +49,7 @@ async function explain($: EngineInterface, term: string): Promise<{ ok: boolean;
     return { ok: true, text: forked.text }
   }
   if (forked.reason !== 'nothing-to-fork') {
-    return { ok: false, text: `No explainer: ${forked.reason}. Try /explain ${term} again.` }
+    return { ok: false, text: `No explainer: ${forked.reason}. Try again.` }
   }
 
   const plain = await $.model.complete({
@@ -57,13 +61,37 @@ async function explain($: EngineInterface, term: string): Promise<{ ok: boolean;
 
   return plain.isAnswered
     ? { ok: true, text: plain.text }
-    : { ok: false, text: `No explainer: ${plain.reason}. Try /explain ${term} again.` }
+    : { ok: false, text: `No explainer: ${plain.reason}. Try again.` }
 }
 
 async function setEntry($: EngineInterface, id: string, change: Partial<Explainer>): Promise<void> {
   await update($, entries, list => list.map(one => (one.id === id ? { ...one, ...change } : one)))
   const kept = (await read($, entries)).filter(one => one.status === 'done')
   await $.store.set(STORE_KEY, kept)
+}
+
+// Adds a "loading" entry and shows it; returns its id.
+async function addEntry($: EngineInterface, term: string): Promise<string> {
+  const id = `${await $.clock.now()}-${(await read($, entries)).length}`
+  const entry: Explainer = { id, term, status: 'loading', text: '' }
+  await update($, entries, list => [entry, ...list].slice(0, KEEP))
+  await update($, shownId, () => id)
+
+  return id
+}
+
+// Answers in the background, so the prompt stays free while the model works.
+async function explainInBackground($: EngineInterface, term: string): Promise<void> {
+  const id = await addEntry($, term)
+  $.clock.after(0, () => {
+    void explain($, term).then(result =>
+      setEntry($, id, { status: result.ok ? 'done' : 'error', text: result.text }),
+    )
+  })
+}
+
+async function highlighted($: EngineInterface): Promise<string> {
+  return ((await $.ui.selection())?.text ?? '').trim()
 }
 
 // A label short enough for a button or a one-line reply.
@@ -89,8 +117,8 @@ function isExplainer(value: unknown): value is Explainer {
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
-      name: 'explain',
-      description: 'Plain-English explainer in the sidebar. /explain <term>, or highlight text and type /explain.',
+      name: COMMAND,
+      description: 'Plain-English explainer in the sidebar: /huh <term>, or highlight text and type /huh.',
       argumentHint: '<term, phrase or command>',
       immediate: true,
     })
@@ -103,48 +131,32 @@ export const register: Register = on => {
       }
     }
 
+    // Keep the sidebar and its Explain button around; a surface too narrow
+    // for a sidebar leaves it waiting until /huh opens it.
+    void $.ui.open({ id: PANE, title: TITLE })
+
     return next(e)
   })
 
-  on('command.run', { command: 'explain' }, async ($, e) => {
-    // What to explain: what was typed after /explain, else what is highlighted.
-    let term = e.args.trim()
+  on('command.run', { command: COMMAND }, async ($, e) => {
+    // What to explain: what was typed after /huh, else what is highlighted.
+    const term = e.args.trim() || (await highlighted($))
+    const opened = await $.ui.open({ id: PANE, title: TITLE })
+
     if (term === '') {
-      term = ((await $.ui.selection())?.text ?? '').trim()
+      return { text: opened.isPlaced ? 'Explain sidebar opened. ' + HOW_TO : HOW_TO }
     }
-
-    // Nothing typed or highlighted: show the sidebar with past explainers.
-    if (term === '') {
-      const opened = await $.ui.open({ id: PANE, title: 'Explain' })
-
-      return {
-        text: opened.isPlaced
-          ? 'Explain sidebar opened. Type /explain followed by a term, or highlight text and type /explain.'
-          : 'Type /explain followed by a term, or highlight text and type /explain.',
-      }
-    }
-
-    const id = `${await $.clock.now()}-${(await read($, entries)).length}`
-    const entry: Explainer = { id, term, status: 'loading', text: '' }
-    await update($, entries, list => [entry, ...list].slice(0, KEEP))
-    await update($, shownId, () => id)
-
-    const opened = await $.ui.open({ id: PANE, title: 'Explain' })
 
     // No sidebar on this surface: wait for the explainer and print it here.
     if (!opened.isPlaced) {
+      const id = await addEntry($, term)
       const result = await explain($, term)
       await setEntry($, id, { status: result.ok ? 'done' : 'error', text: result.text })
 
       return { text: result.text }
     }
 
-    // Sidebar shown: answer in the background so the prompt stays free.
-    $.clock.after(0, () => {
-      void explain($, term).then(result =>
-        setEntry($, id, { status: result.ok ? 'done' : 'error', text: result.text }),
-      )
-    })
+    await explainInBackground($, term)
 
     return { text: `Explaining "${short(term)}" in the sidebar.` }
   })
@@ -154,27 +166,34 @@ export const register: Register = on => {
     const list = await read($, entries)
     const wanted = await read($, shownId)
     const entry = list.find(one => one.id === wanted) ?? list[0]
-
-    if (entry === undefined) {
-      return (
-        <Box flexDirection="column">
-          <Text dimColor>
-            Type /explain followed by any word, phrase or command. Or highlight text and type /explain.
-          </Text>
-        </Box>
-      )
-    }
-
-    const earlier = list.filter(one => one.id !== entry.id && one.status === 'done').slice(0, 8)
+    const earlier = list.filter(one => one.id !== entry?.id && one.status === 'done').slice(0, 8)
 
     return (
       <Box flexDirection="column" gap={1}>
-        <Text bold color={ACCENT}>
-          {entry.term}
-        </Text>
-        {entry.status === 'loading' && <Text dimColor>Explaining...</Text>}
-        {entry.status === 'error' && <Text color="error">{entry.text}</Text>}
-        {entry.status === 'done' && <Markdown text={entry.text} />}
+        <Button
+          key="explain-selection"
+          variant="primary"
+          hotkey="e"
+          label="Explain highlighted text"
+          onPress={async () => {
+            const term = await highlighted($)
+            if (term === '') {
+              $.ui.toast('Highlight a word or phrase in the chat first.')
+
+              return
+            }
+            await explainInBackground($, term)
+          }}
+        />
+        {entry === undefined && <Text dimColor>{HOW_TO}</Text>}
+        {entry !== undefined && (
+          <Text bold color={ACCENT}>
+            {entry.term}
+          </Text>
+        )}
+        {entry?.status === 'loading' && <Text dimColor>Explaining...</Text>}
+        {entry?.status === 'error' && <Text color="error">{entry.text}</Text>}
+        {entry?.status === 'done' && <Markdown text={entry.text} />}
         {earlier.length > 0 && (
           <Box flexDirection="column">
             <Text dimColor>Earlier</Text>

@@ -12,9 +12,9 @@
       "description": "A one-line banner above the prompt showing your single next step. /next sets it, /next done clears it."
     },
     {
-      "name": "explain",
-      "source": "./mods/explain",
-      "description": "/explain any term, phrase or command from the session (or highlighted text) and get a plain-English explainer in the sidebar."
+      "name": "explainer",
+      "source": "./mods/explainer",
+      "description": "Highlight a word, phrase or command and click Explain in the sidebar (or type /huh) for a plain-English explainer."
     },
     {
       "name": "alec-skills",

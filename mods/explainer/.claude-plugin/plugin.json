@@ -1,0 +1,6 @@
+{
+  "name": "explainer",
+  "description": "Highlight a word, phrase or command and click Explain in the sidebar (or type /huh) for a plain-English explainer.",
+  "author": { "name": "Alec" },
+  "types": "./types/index.d.ts"
+}

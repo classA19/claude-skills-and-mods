@@ -1,6 +1,0 @@
-{
-  "name": "explain",
-  "description": "/explain any term, phrase or command from the session (or highlighted text) and get a plain-English explainer in the sidebar.",
-  "author": { "name": "Alec" },
-  "types": "./types/index.d.ts"
-}

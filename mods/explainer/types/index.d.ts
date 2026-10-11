@@ -8,6 +8,6 @@ export type Explainer = {
 
 declare module 'claude-code' {
   interface PluginState {
-    explain: { entries: Explainer[]; shownId: string | null }
+    explainer: { entries: Explainer[]; shownId: string | null }
   }
 }
